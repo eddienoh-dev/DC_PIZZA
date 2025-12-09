@@ -15,7 +15,12 @@ except ImportError:
 BRANDS = ["피자헛", "도미노", "파파존스", "피자스쿨"]
 
 BASE_URL = "https://gall.dcinside.com/board/lists"
-HEADERS = {"User-Agent": "Mozilla/5.0"}
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Referer": "https://gall.dcinside.com/board/lists?id=pizza",
+    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+}
 
 
 def normalize_date(text: str, today: dt.date) -> dt.date | None:
@@ -66,11 +71,15 @@ def get_recent_7days_count(keyword, max_page=50):
             "page": page,
         }
 
-        res = requests.get(BASE_URL, headers=HEADERS, params=params)
+        res = requests.get(BASE_URL, headers=HEADERS, params=params, timeout=10)
+        if res.status_code != 200:
+            print(f"[{keyword}] 요청 실패: status {res.status_code}")
+            break
         soup = BeautifulSoup(res.text, "html.parser")
         rows = soup.select("tr.ub-content")
 
         if not rows:
+            print(f"[{keyword}] 행을 찾지 못했습니다 (page {page}). HTML 구조 변경 가능성.")
             break
 
         parsed_dates = []
