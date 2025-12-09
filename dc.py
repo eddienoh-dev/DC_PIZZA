@@ -20,6 +20,15 @@ HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 def normalize_date(text: str, today: dt.date) -> dt.date | None:
     text = text.strip()
+    # 시간까지 포함되면 첫 토큰(날짜)만 사용
+    if " " in text:
+        text = text.split(" ")[0]
+
+    # 상대 표현 처리
+    if text in ("오늘",):
+        return today
+    if text in ("어제",):
+        return today - dt.timedelta(days=1)
 
     # 당일 게시글은 시간만 표시되는 경우가 있어 ":" 여부로 판별
     if ":" in text:
