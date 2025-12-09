@@ -11,7 +11,7 @@ try:
 except ImportError:
     st = None
 
-# 모니터링할 브랜드 목록 (파파존스로 변경 반영)
+# 모니터링할 브랜드 목록
 BRANDS = ["피자헛", "도미노", "파파존스", "피자스쿨"]
 
 BASE_URL = "https://gall.dcinside.com/board/lists"
@@ -118,7 +118,7 @@ def run_streamlit():
             df["date"] = pd.to_datetime(df["date"])
         return df
 
-    st.title("DCInside 피자 언급량 추이 (최근 7일)")
+    st.title("DCInside 피자 브랜드 추이 (최근 7일)")
     st.write("DCInside 피자 갤러리에서 브랜드 키워드로 검색한 최근 7일치 게시글 수를 일자별로 집계합니다.")
 
     col1, col2 = st.columns([2, 1])
