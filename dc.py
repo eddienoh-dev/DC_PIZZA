@@ -4,6 +4,8 @@ from collections import defaultdict
 
 import pandas as pd
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
 import altair as alt
 
@@ -22,6 +24,18 @@ HEADERS = {
     "Referer": "https://gall.dcinside.com/board/lists?id=pizza",
     "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
 }
+REQUEST_TIMEOUT = (5, 20)
+RETRY_STRATEGY = Retry(
+    total=3,
+    backoff_factor=1.5,
+    status_forcelist=[429, 500, 502, 503, 504],
+    allowed_methods=["GET"],
+    raise_on_status=False,
+)
+SESSION = requests.Session()
+SESSION.headers.update(HEADERS)
+SESSION.mount("https://", HTTPAdapter(max_retries=RETRY_STRATEGY))
+SESSION.mount("http://", HTTPAdapter(max_retries=RETRY_STRATEGY))
 
 
 def normalize_date(text: str, today: dt.date) -> dt.date | None:
@@ -49,7 +63,12 @@ def normalize_date(text: str, today: dt.date) -> dt.date | None:
 
 
 def get_counts_in_range(
-    keyword, start_date: dt.date, end_date: dt.date, max_page=50, progress_cb=None
+    keyword,
+    start_date: dt.date,
+    end_date: dt.date,
+    max_page=50,
+    timeout=REQUEST_TIMEOUT,
+    progress_cb=None,
 ):
     """키워드별 지정 기간의 게시글 수를 일자별로 카운트."""
     daily_count = defaultdict(int)
@@ -68,11 +87,28 @@ def get_counts_in_range(
             "page": page,
         }
 
-        res = requests.get(BASE_URL, headers=HEADERS, params=params, timeout=10)
+        try:
+            res = SESSION.get(BASE_URL, params=params, timeout=timeout)
+        except requests.exceptions.ReadTimeout:
+            err_msg = f"[{keyword}] page {page} request timed out (read {timeout[1]}s), skipped"
+            print(err_msg)
+            if progress_cb:
+                progress_cb(err_msg)
+            continue
+        except requests.exceptions.RequestException as exc:
+            err_msg = f"[{keyword}] page {page} request failed: {exc}"
+            print(err_msg)
+            if progress_cb:
+                progress_cb(err_msg)
+            time.sleep(1.0)
+            continue
         if res.status_code != 200:
-            print(f"[{keyword}] 요청 실패: status {res.status_code}")
-            break
-
+            err_msg = f"[{keyword}] request failed: status {res.status_code}"
+            print(err_msg)
+            if progress_cb:
+                progress_cb(err_msg)
+            time.sleep(1.0)
+            continue
         soup = BeautifulSoup(res.text, "html.parser")
         rows = soup.select("tr.ub-content")
         if not rows:
@@ -109,7 +145,12 @@ def get_counts_in_range(
 
 
 def fetch_counts(
-    brands, start_date: dt.date, end_date: dt.date, max_page=50, progress_cb=None
+    brands,
+    start_date: dt.date,
+    end_date: dt.date,
+    max_page=50,
+    timeout=REQUEST_TIMEOUT,
+    progress_cb=None,
 ) -> pd.DataFrame:
     all_data = []
     for brand in brands:
@@ -120,6 +161,7 @@ def fetch_counts(
             start_date=start_date,
             end_date=end_date,
             max_page=max_page,
+            timeout=timeout,
             progress_cb=progress_cb,
         )
         for day, count in result.items():
@@ -146,6 +188,8 @@ def run_streamlit():
         brands = st.multiselect("브랜드 선택", options=BRANDS, default=BRANDS)
     with col2:
         max_page = st.slider("최대 페이지(검색 깊이)", min_value=5, max_value=80, value=50, step=5)
+    read_timeout = st.slider("Read timeout (sec)", min_value=5, max_value=60, value=REQUEST_TIMEOUT[1], step=5)
+    timeout = (REQUEST_TIMEOUT[0], read_timeout)
 
     date_range = st.date_input(
         "조회 기간 (시작일, 종료일)",
@@ -178,6 +222,7 @@ def run_streamlit():
                 start_date=start_date,
                 end_date=end_date,
                 max_page=max_page,
+                timeout=timeout,
                 progress_cb=progress_cb,
             )
 
